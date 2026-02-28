@@ -19,6 +19,8 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+
+print("DEBUG: Running sushi_go_client.py with rogelio/pudding-logic changes")  # ADD THIS LINE
 # Card names used by the protocol (now using full names instead of codes)
 CARD_NAMES = {
     "Tempura": "Tempura",
@@ -169,6 +171,30 @@ class SushiGoClient:
         Returns:
             Index of the card to play (0-based)
         """
+
+        print(f"DEBUG TURN: {self.state.turn}")
+
+        if self.state.turn % 10 == 0:
+            self.state.round += 1
+
+        print(f"DEBUG ROUND: {self.state.round}")
+
+        # If we have wasabi, prioritize nigiri
+        if self.state and self.state.has_unused_wasabi:
+            for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
+                if nigiri in hand:
+                    return hand.index(nigiri)
+
+        # Pudding logic
+        if self.state and (self.state.round != 1):
+            for pud in hand:
+                if pud == "Pudding":
+                    print("PUDDING GRABBED")
+                    return hand.index(pud)
+        else:
+                if self.state:
+                    print(f"DEBUG: Round is {self.state.round}, pudding logic skipped")
+
         # Simple priority-based strategy
         priority = [
             "Squid Nigiri",  # 3 points, or 9 with wasabi
@@ -184,28 +210,11 @@ class SushiGoClient:
             "Maki Roll (1)",  # 1 maki roll
             "Chopsticks",  # Play 2 cards next turn
         ]
-
-        # If we have wasabi, prioritize nigiri
-        if self.state and self.state.has_unused_wasabi:
-            for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
-                if nigiri in hand:
-                    return hand.index(nigiri)
-
         
-        # Pudding logic
-        if self.state and self.state.round == 2:
-            for pud in hand:
-                if pud == "Pudding":
-                    print("PUDDING GRABBED")
-                    return hand.index(pud)
-
         # Otherwise use priority list
         for card in priority:
             if card in hand:
                 return hand.index(card)
-
-        # Fallback: random
-        return random.randint(0, len(hand) - 1)
         
     
     def handle_message(self, message: str):
