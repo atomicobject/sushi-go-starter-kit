@@ -11,6 +11,7 @@ from .protocol import (
     OkMessage,
     PlayerJoinedMessage,
     PlayerLeftMessage,
+    PlayerOrderMessage,
     RejoinedMessage,
     RoundEndMessage,
     RoundStartMessage,
@@ -44,6 +45,7 @@ class GameState:
 
     hand: list[HandCard] = field(default_factory=list)
     players: list[str] = field(default_factory=list)
+    player_order: list[str] = field(default_factory=list)
 
     # Per-round tracking
     last_plays: list[tuple[str, list[Card]]] = field(default_factory=list)
@@ -91,6 +93,9 @@ class GameState:
                 self.phase = "playing"
                 self.round = 0
                 self.turn = 0
+
+            case PlayerOrderMessage(players=p):
+                self.player_order = list(p)
 
             case RoundStartMessage(round=r):
                 self.round = r

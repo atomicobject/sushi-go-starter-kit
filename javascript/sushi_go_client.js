@@ -43,6 +43,7 @@ class SushiGoClient {
             hand: [],
             round: 1,
             turn: 1,
+            playerOrder: [],
             playedCards: [],
             hasChopsticks: false,
             hasUnusedWasabi: false,
@@ -227,7 +228,10 @@ class SushiGoClient {
     }
 
     handleMessage(message) {
-        if (message.startsWith('HAND')) {
+        if (message.startsWith('PLAYER_ORDER ')) {
+            const payload = message.slice('PLAYER_ORDER '.length);
+            this.state.playerOrder = payload ? payload.split(',') : [];
+        } else if (message.startsWith('HAND')) {
             this.parseHand(message);
         } else if (message.startsWith('ROUND_START')) {
             const parts = message.split(' ');

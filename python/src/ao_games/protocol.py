@@ -69,6 +69,11 @@ class GameStartMessage:
 
 
 @dataclass(frozen=True)
+class PlayerOrderMessage:
+    players: list[str]
+
+
+@dataclass(frozen=True)
 class RoundStartMessage:
     round: int
 
@@ -158,6 +163,7 @@ type ServerMessage = (
     | PlayerJoinedMessage
     | PlayerLeftMessage
     | GameStartMessage
+    | PlayerOrderMessage
     | RoundStartMessage
     | HandMessage
     | WaitingMessage
@@ -341,6 +347,10 @@ def parse_server_message(line: str) -> ServerMessage:
                 player_count=int(parts[0]),
                 move_timeout_ms=int(parts[1]),
             )
+
+        case "PLAYER_ORDER":
+            players = payload.strip().split(",") if payload.strip() else []
+            return PlayerOrderMessage(players=players)
 
         case "ROUND_START":
             return RoundStartMessage(round=int(payload.strip()))
