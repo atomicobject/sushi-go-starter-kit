@@ -133,6 +133,43 @@ Edit the `choose_card` method in either file to implement your strategy.
 
 **State tracking**: `sushi_go_client.py` tracks played cards, chopsticks, and wasabi state for you. Use `self.state` to make smarter decisions.
 
+## Rejoin After Disconnect
+
+The starter clients save the rejoin token from the `WELCOME` message. If your bot crashes, you can reconnect using that token instead of joining fresh:
+
+```python
+import socket
+
+host, port = "localhost", 7878
+token = "fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8"  # saved from WELCOME
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect((host, port))
+sock_file = sock.makefile("r")
+
+sock.sendall(f"REJOIN {token}\n".encode())
+response = sock_file.readline().strip()
+# response: "REJOINED myGame 0"
+```
+
+For a production bot, save the token to a file on join and read it back on startup:
+
+```python
+# On join — save token
+with open("rejoin_token.txt", "w") as f:
+    f.write(rejoin_token)
+
+# On restart — check for saved token
+try:
+    with open("rejoin_token.txt") as f:
+        token = f.read().strip()
+    send(f"REJOIN {token}")
+except FileNotFoundError:
+    send(f"JOIN {game_id} {player_name}")
+```
+
+See the [main README](../README.md#handling-disconnects-rejoin-tokens) for more details.
+
 ## Protocol
 
 See [../PROTOCOL.md](../PROTOCOL.md) for the full protocol specification.

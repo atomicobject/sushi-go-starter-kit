@@ -83,6 +83,55 @@ The `hand` parameter is a list of card names (e.g., `["Tempura", "Salmon Nigiri"
 
 Or, write your bot from scratch — all you need is a TCP socket and the protocol below.
 
+## Handling Disconnects (Rejoin Tokens)
+
+When your bot joins a game, the server sends back a **rejoin token** in the `WELCOME` message:
+
+```
+WELCOME myGame 0 fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  Save this! It's your lifeline.
+```
+
+If your bot crashes or loses its connection, you can reconnect and send `REJOIN <token>` instead of `JOIN`. This restores your session — you keep your seat, your cards, and your score. Other players won't even notice you disconnected.
+
+### How to use it
+
+1. **Save the token** when you receive `WELCOME` (the 4th field)
+2. If you disconnect, open a new TCP connection
+3. Send `REJOIN <token>` instead of `JOIN`
+4. Server responds with `REJOINED <game_id> <player_id>` — you're back in
+5. You'll receive the next `HAND` message when it's your turn, just like normal
+
+### Tips
+
+- Save the token to a file so your bot can read it on restart
+- You do **not** need to send `READY` again after rejoining
+- The token is a random 32-character string unique to your seat in that game
+- If the game has already ended, `REJOIN` will return an error
+
+### Example reconnect flow
+
+```
+# First connection
+>>> JOIN myGame Alice
+<<< WELCOME myGame 0 fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8
+>>> READY
+<<< OK
+<<< HAND 0:Tempura 1:Sashimi ...
+>>> PLAY 0
+<<< OK
+
+# Connection drops...
+
+# New connection
+>>> REJOIN fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8
+<<< REJOINED myGame 0
+<<< HAND 0:Dumpling 1:Pudding ...   (game continues)
+>>> PLAY 1
+<<< OK
+```
+
 ## Language Guides
 
 - [Python Guide](python/README.md)

@@ -42,6 +42,7 @@ class GameState:
 
     game_id: str
     player_id: int
+    rejoin_token: str
     hand: list[str]
     round: int = 1
     turn: int = 1
@@ -116,7 +117,14 @@ class SushiGoClient:
 
         if response.startswith("WELCOME"):
             parts = response.split()
-            self.state = GameState(game_id=parts[1], player_id=int(parts[2]), hand=[])
+            rejoin_token = parts[3] if len(parts) > 3 else ""
+            self.state = GameState(
+                game_id=parts[1],
+                player_id=int(parts[2]),
+                rejoin_token=rejoin_token,
+                hand=[],
+            )
+            print(f"Rejoin token: {rejoin_token}")
             return True
         elif response.startswith("ERROR"):
             print(f"Failed to join: {response}")

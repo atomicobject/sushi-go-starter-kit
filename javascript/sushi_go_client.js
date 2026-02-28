@@ -39,6 +39,7 @@ class SushiGoClient {
         this.state = {
             gameId: null,
             playerId: null,
+            rejoinToken: null,
             hand: [],
             round: 1,
             turn: 1,
@@ -119,6 +120,8 @@ class SushiGoClient {
             const parts = response.split(' ');
             this.state.gameId = parts[1];
             this.state.playerId = parseInt(parts[2]);
+            this.state.rejoinToken = parts[3] || null;
+            console.log(`Rejoin token: ${this.state.rejoinToken}`);
             return true;
         } else if (response.startsWith('ERROR')) {
             console.log(`Failed to join: ${response}`);
