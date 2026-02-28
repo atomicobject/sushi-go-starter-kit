@@ -47,14 +47,30 @@ class GameState:
     round: int = 1
     turn: int = 1
     played_cards: list[str] = None
-    has_chopsticks: bool = False
-    has_unused_wasabi: bool = False
-    puddings: int = 0
-    cards_played = {}
+    cards_played: dict[str, list[Card]] = {}
 
     def __post_init__(self):
         if self.played_cards is None:
             self.played_cards = []
+
+
+class PlayerState:
+
+    def __init__(self):
+        self.individual_hand: list[Card] = []
+        self.play_area: list[list[Card]] = [] # each element could be stacked cards
+        self.has_chopsticks: bool = False
+        self.has_unused_wasabi: bool = False
+        self.puddings: int = 0
+
+class Card:
+    def __init__(self, name: str = "Unknown", shorthand: str = "UK"):
+        self.name = name
+        self.shorthand = shorthand
+
+
+
+
 
 
 class SushiGoClient:
