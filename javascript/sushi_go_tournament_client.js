@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /**
- * Sushi Go Client - JavaScript/Node.js Starter Kit
+ * Sushi Go Tournament Client - JavaScript/Node.js Starter Kit
  *
- * This client connects to the Sushi Go server and plays using a simple strategy.
- * Modify the `chooseCard` method to implement your own AI!
+ * This client connects to the Sushi Go server and plays through an entire tournament
+ * using a simple strategy. Modify the `chooseCard` method to implement your own AI!
  *
  * Usage:
- *     node sushi_go_client.js <server_host> <server_port> <game_id> <player_name>
+ *     node sushi_go_tournament_client.js <server_host> <server_port> <tournament_id> <player_name>
  *
  * Example:
- *     node sushi_go_client.js localhost 7878 abc123 MyBot
+ *     node sushi_go_tournament_client.js localhost 7878 spicy-salmon MyBot
  */
 
 const net = require('net');
-const readline = require('readline');
 
 // Card names used by the protocol (now using full names instead of codes)
 const CARD_NAMES = {
@@ -31,7 +30,7 @@ const CARD_NAMES = {
     'Chopsticks': 'Chopsticks',
 };
 
-class SushiGoClient {
+class SushiGoTournamentClient {
     constructor(host, port) {
         this.host = host;
         this.port = port;
@@ -50,6 +49,9 @@ class SushiGoClient {
             puddings: 0,
         };
         this.buffer = '';
+        // Tournament state
+        this.tournamentId = null;
+        this.tournamentRejoinToken = null;
     }
 
     connect() {
@@ -111,26 +113,6 @@ class SushiGoClient {
         });
     }
 
-    async joinGame(gameId, playerName) {
-        this.send(`JOIN ${gameId} ${playerName}`);
-        const response = await this.receiveUntil((line) =>
-            line.startsWith('WELCOME') || line.startsWith('ERROR')
-        );
-
-        if (response.startsWith('WELCOME')) {
-            const parts = response.split(' ');
-            this.state.gameId = parts[1];
-            this.state.playerId = parseInt(parts[2]);
-            this.state.rejoinToken = parts[3] || null;
-            console.log(`Rejoin token: ${this.state.rejoinToken}`);
-            return true;
-        } else if (response.startsWith('ERROR')) {
-            console.log(`Failed to join: ${response}`);
-            return false;
-        }
-        return false;
-    }
-
     async receiveUntil(predicate) {
         while (true) {
             const message = await this.receive();
@@ -147,9 +129,62 @@ class SushiGoClient {
         }
     }
 
+    async joinTournament(tournamentId, playerName) {
+        this.tournamentId = tournamentId;
+        this.send(`TOURNEY ${tournamentId} ${playerName}`);
+        const response = await this.receiveUntil((line) =>
+            line.startsWith('TOURNAMENT_WELCOME') || line.startsWith('ERROR')
+        );
+
+        if (response.startsWith('TOURNAMENT_WELCOME')) {
+            // TOURNAMENT_WELCOME <tid> <count>/<max> <rejoin_token>
+            const parts = response.split(' ');
+            this.tournamentRejoinToken = parts[3] || null;
+            console.log(`Joined tournament ${tournamentId} (rejoin token: ${this.tournamentRejoinToken})`);
+            return true;
+        } else if (response.startsWith('ERROR')) {
+            console.log(`Failed to join tournament: ${response}`);
+            return false;
+        }
+        return false;
+    }
+
+    async joinMatch(matchToken) {
+        this.send(`TJOIN ${matchToken}`);
+        const response = await this.receiveUntil((line) =>
+            line.startsWith('WELCOME') || line.startsWith('ERROR')
+        );
+
+        if (response.startsWith('WELCOME')) {
+            const parts = response.split(' ');
+            this.state.gameId = parts[1];
+            this.state.playerId = parseInt(parts[2]);
+            this.state.rejoinToken = parts[3] || null;
+            this.state.hand = [];
+            this.state.round = 1;
+            this.state.turn = 1;
+            this.state.playedCards = [];
+            this.state.hasChopsticks = false;
+            this.state.hasUnusedWasabi = false;
+            console.log(`Joined match (game: ${this.state.gameId})`);
+            return true;
+        } else if (response.startsWith('ERROR')) {
+            console.log(`Failed to join match: ${response}`);
+            return false;
+        }
+        return false;
+    }
+
     async signalReady() {
         this.send('READY');
         return await this.receive();
+    }
+
+    async leaveGame() {
+        this.send('LEAVE');
+        await this.receiveUntil((line) =>
+            line.startsWith('OK') || line.startsWith('ERROR')
+        );
     }
 
     async playCard(cardIndex) {
@@ -227,7 +262,7 @@ class SushiGoClient {
         return Math.floor(Math.random() * hand.length);
     }
 
-    handleMessage(message) {
+    handleGameMessage(message) {
         if (message.startsWith('PLAYER_ORDER ')) {
             const payload = message.slice('PLAYER_ORDER '.length);
             this.state.playerOrder = payload ? payload.split(',') : [];
@@ -239,16 +274,12 @@ class SushiGoClient {
             this.state.turn = 1;
             this.state.playedCards = [];
         } else if (message.startsWith('PLAYED')) {
-            // Cards were revealed, next turn
             this.state.turn += 1;
         } else if (message.startsWith('ROUND_END')) {
-            // Round ended
             this.state.playedCards = [];
         } else if (message.startsWith('GAME_END')) {
             console.log('Game over!');
             return false;
-        } else if (message.startsWith('WAITING')) {
-            // Our move was accepted, waiting for others
         }
         return true;
     }
@@ -268,27 +299,90 @@ class SushiGoClient {
         }
     }
 
-    async run(gameId, playerName) {
+    /**
+     * Play a full game. Returns a tournament message if one arrived during the game, else null.
+     */
+    async playGame() {
+        while (true) {
+            const message = await this.receive();
+
+            // Tournament messages can arrive during a game
+            if (message.startsWith('TOURNAMENT_MATCH') || message.startsWith('TOURNAMENT_COMPLETE')) {
+                return message;
+            }
+
+            const gameRunning = this.handleGameMessage(message);
+
+            if (message.startsWith('HAND') && this.state.hand.length > 0) {
+                await this.playTurn();
+            }
+
+            if (!gameRunning) {
+                return null;
+            }
+        }
+    }
+
+    async run(tournamentId, playerName) {
         try {
             await this.connect();
 
-            if (!await this.joinGame(gameId, playerName)) {
+            if (!await this.joinTournament(tournamentId, playerName)) {
                 return;
             }
 
-            // Signal ready
-            await this.signalReady();
+            let pendingMessage = null;
 
-            // Main game loop
-            let running = true;
-            while (running) {
-                const message = await this.receive();
-                running = this.handleMessage(message);
-
-                // If we received our hand, play a card
-                if (message.startsWith('HAND') && this.state.hand.length > 0) {
-                    await this.playTurn();
+            // Tournament loop — wait for match assignments
+            while (true) {
+                let msg;
+                if (pendingMessage) {
+                    msg = pendingMessage;
+                    pendingMessage = null;
+                } else {
+                    msg = await this.receive();
                 }
+
+                const trimmed = msg.trim();
+                if (!trimmed) continue;
+
+                if (trimmed.startsWith('TOURNAMENT_MATCH')) {
+                    // TOURNAMENT_MATCH <tid> <match_token> <round> [<opponent>]
+                    const parts = trimmed.split(' ');
+                    const matchToken = parts[2];
+                    const roundNum = parts[3];
+                    const opponent = parts[4] || 'unknown';
+
+                    if (matchToken === 'BYE' || opponent === 'BYE') {
+                        console.log(`Round ${roundNum}: got a BYE, auto-advancing...`);
+                        continue;
+                    }
+
+                    console.log(`Round ${roundNum}: matched vs ${opponent}`);
+
+                    if (!await this.joinMatch(matchToken)) {
+                        continue;
+                    }
+
+                    await this.signalReady();
+
+                    // Play the game — may return a tournament message that arrived mid-game
+                    pendingMessage = await this.playGame();
+
+                    // Leave the game so we can join the next match
+                    await this.leaveGame();
+
+                } else if (trimmed.startsWith('TOURNAMENT_COMPLETE')) {
+                    // TOURNAMENT_COMPLETE <tid> <winner>
+                    const parts = trimmed.split(' ');
+                    const winner = parts[2] || 'unknown';
+                    console.log(`Tournament complete! Winner: ${winner}`);
+                    break;
+
+                } else if (trimmed.startsWith('TOURNAMENT_JOINED')) {
+                    console.log(`  ${trimmed}`);
+                }
+                // Ignore other messages
             }
         } catch (err) {
             console.error(`Error: ${err.message}`);
@@ -303,14 +397,14 @@ function main() {
     const args = process.argv.slice(2);
 
     if (args.length !== 4) {
-        console.log('Usage: node sushi_go_client.js <host> <port> <game_id> <player_name>');
-        console.log('Example: node sushi_go_client.js localhost 7878 abc123 MyBot');
+        console.log('Usage: node sushi_go_tournament_client.js <host> <port> <tournament_id> <player_name>');
+        console.log('Example: node sushi_go_tournament_client.js localhost 7878 spicy-salmon MyBot');
         process.exit(1);
     }
 
-    const [host, port, gameId, playerName] = args;
-    const client = new SushiGoClient(host, parseInt(port));
-    client.run(gameId, playerName);
+    const [host, port, tournamentId, playerName] = args;
+    const client = new SushiGoTournamentClient(host, parseInt(port));
+    client.run(tournamentId, playerName);
 }
 
 main();

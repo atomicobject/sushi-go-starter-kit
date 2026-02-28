@@ -26,6 +26,11 @@ python python/sushi_go_client.py localhost 7878 <game_id> <your_name>
 node javascript/sushi_go_client.js localhost 7878 <game_id> <your_name>
 ```
 
+To join a game on someone else's laptop
+```bash
+python first_card_bot.py <ip_address> <port> <game_id> <your_name>
+```
+
 Replace `<game_id>` with the game ID shown in the web UI or given to you by the tournament organizer.
 
 ## Running a Test Server
@@ -33,13 +38,20 @@ Replace `<game_id>` with the game ID shown in the web UI or given to you by the 
 First, load the server image from the LAN:
 
 ```bash
-curl https://joes-macbook.tail10906.ts.net/sushi-go-test.tar | docker load
+curl -O https://joes-macbook.tail10906.ts.net/sushi-go-test.tar && docker load < sushi-go-test.tar
 ```
+
+or 
+
+```bash
+curl -O http://joes-macbook.local:9090/sushi-go-test.tar && docker load < sushi-go-test.tar
+```
+
 
 Then start it:
 
 ```bash
-docker run -p 7878:7878 -p 8080:8080 sushi-go-test
+docker run -it -p 7878:7878 -p 8080:8080 sushi-go-test
 ```
 
 - **Port 7878** — TCP game port (where your bot connects)
@@ -70,6 +82,55 @@ The starter clients include a strategy function you can edit:
 The `hand` parameter is a list of card names (e.g., `["Tempura", "Salmon Nigiri", "Pudding"]`). Return the index of the card you want to play.
 
 Or, write your bot from scratch — all you need is a TCP socket and the protocol below.
+
+## Handling Disconnects (Rejoin Tokens)
+
+When your bot joins a game, the server sends back a **rejoin token** in the `WELCOME` message:
+
+```
+WELCOME myGame 0 fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  Save this! It's your lifeline.
+```
+
+If your bot crashes or loses its connection, you can reconnect and send `REJOIN <token>` instead of `JOIN`. This restores your session — you keep your seat, your cards, and your score. Other players won't even notice you disconnected.
+
+### How to use it
+
+1. **Save the token** when you receive `WELCOME` (the 4th field)
+2. If you disconnect, open a new TCP connection
+3. Send `REJOIN <token>` instead of `JOIN`
+4. Server responds with `REJOINED <game_id> <player_id>` — you're back in
+5. You'll receive the next `HAND` message when it's your turn, just like normal
+
+### Tips
+
+- Save the token to a file so your bot can read it on restart
+- You do **not** need to send `READY` again after rejoining
+- The token is a random 32-character string unique to your seat in that game
+- If the game has already ended, `REJOIN` will return an error
+
+### Example reconnect flow
+
+```
+# First connection
+>>> JOIN myGame Alice
+<<< WELCOME myGame 0 fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8
+>>> READY
+<<< OK
+<<< HAND 0:Tempura 1:Sashimi ...
+>>> PLAY 0
+<<< OK
+
+# Connection drops...
+
+# New connection
+>>> REJOIN fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8
+<<< REJOINED myGame 0
+<<< HAND 0:Dumpling 1:Pudding ...   (game continues)
+>>> PLAY 1
+<<< OK
+```
 
 ## Language Guides
 

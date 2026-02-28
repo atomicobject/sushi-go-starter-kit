@@ -31,12 +31,25 @@ Messages the server sends to you:
 | `OK [details]` | Command succeeded |
 | `ERROR <code> <message>` | Command failed (see Error Codes below) |
 | `GAME_START <player_count>` | Game is starting |
+| `PLAYER_ORDER <name1>,<name2>,...` | Player seating order (sent right after `GAME_START`) |
 | `ROUND_START <round>` | New round beginning (1, 2, or 3) |
 | `HAND <idx:card> ...` | Your current hand — **this means it's your turn to play** |
 | `PLAYED <player1>:<cards>; <player2>:<cards>; ...` | All cards played this turn (revealed simultaneously) |
 | `WAITING <player_names...>` | Players who haven't acted yet |
 | `ROUND_END <round> <scores_json>` | Round finished with scores |
 | `GAME_END <final_scores_json> <winners_json>` | Game over with final results |
+
+## Player Order
+
+Immediately after `GAME_START`, the server sends a `PLAYER_ORDER` message with the comma-separated names of all players in seating order:
+
+```
+PLAYER_ORDER Alice,Bob,Charlie
+```
+
+Hands pass from `player[i]` to `player[i+1]` each turn (wrapping from last to first). Knowing the seating order lets you anticipate which cards will reach you.
+
+Old clients that don't recognize `PLAYER_ORDER` can safely ignore it.
 
 ## HAND Message Format
 
@@ -186,6 +199,7 @@ A complete game from a bot's perspective:
 <<< OK
 <<< JOINED Bob 2/2
 <<< GAME_START 2
+<<< PLAYER_ORDER Alice,Bob
 <<< ROUND_START 1
 <<< HAND 0:Tempura 1:Sashimi 2:Salmon Nigiri 3:Dumpling 4:Pudding 5:Wasabi 6:Maki Roll (2) 7:Egg Nigiri 8:Chopsticks 9:Squid Nigiri
 >>> PLAY 9

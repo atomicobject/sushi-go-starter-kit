@@ -40,10 +40,10 @@ CARD_NAMES = {
 class GameState:
     """Tracks the current state of a single game within the tournament."""
 
-    game_id: str
-    player_id: int
-    rejoin_token: str
-    hand: list[str]
+    game_id: str = ""
+    player_id: int = 0
+    rejoin_token: str = ""
+    hand: list[str] = field(default_factory=list)
     round: int = 1
     turn: int = 1
     played_cards: list[str] = field(default_factory=list)
@@ -140,9 +140,8 @@ class SushiGoTournamentClient:
                 game_id=parts[1],
                 player_id=int(parts[2]),
                 rejoin_token=rejoin_token,
-                hand=[],
             )
-            print(f"Rejoin token: {rejoin_token}")
+            print(f"Joined match (game: {self.state.game_id})")
             return True
         elif response.startswith("ERROR"):
             print(f"Failed to join match: {response}")
@@ -203,56 +202,6 @@ class SushiGoTournamentClient:
         Returns:
             Index of the card to play (0-based)
         """
-
-        print(f"DEBUG TURN: {self.state.turn}")
-        if self.state.turn % 10 == 0:
-            self.state.round += 1
-        print(f"DEBUG ROUND: {self.state.round}")
-
-
-        # SET COMPLETION 
-
-        # Sashimi set of 3 
-        if self.count_card("Sashimi") == 2 and "Sashimi" in hand:
-            print("DEBUG: SASHIMI SET OF 3 MADE")
-            return hand.index("Sashimi")
-        
-        # Tempura pair 
-        if self.count_card("Tempura") == 1 and "Tempura" in hand:
-            print("DEBUG: Tempura SET OF 3 MADE")
-            return hand.index("Tempura")
-
-        # Dumpling sets
-        total_dumplings = self.count_card("Dumplings")
-        if self.count_card("Dumpling") >= 1 and "Dumpling" in hand:
-            print(f"DEBUG: Total dumplings = {total_dumplings}\nGRABBING DUMPLING")
-            return hand.index("Dumpling")
-
-        # If we have wasabi, prioritize nigiri
-        if self.state and self.state.has_unused_wasabi:
-            for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
-                if nigiri in hand:
-                    return hand.index(nigiri)
-
-        # Maki rolls logic
-        maki_count = self.count_card("Maki Roll") + self.count_card("Maki Roll (2)") + self.count_card("Maki Roll (3)")
-        if maki_count == 1 and any("Maki Roll" in card for card in hand):
-            for card in hand:
-                if "Maki Roll" in card:
-                    print(f"Building Maki majority with {card}")
-        
-                    return hand.index(card)
-
-        # Pudding logic
-        if self.state and (self.state.round != 1):
-            for pud in hand:
-                if pud == "Pudding":
-                    print("PUDDING GRABBED")
-                    return hand.index(pud)
-        else:
-                if self.state:
-                    print(f"DEBUG: Round is {self.state.round}, pudding logic skipped")
-
         # Simple priority-based strategy
         priority = [
             "Squid Nigiri",  # 3 points, or 9 with wasabi
@@ -268,15 +217,20 @@ class SushiGoTournamentClient:
             "Maki Roll (1)",  # 1 maki roll
             "Chopsticks",  # Play 2 cards next turn
         ]
-        
+
+        # If we have wasabi, prioritize nigiri
+        if self.state and self.state.has_unused_wasabi:
+            for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
+                if nigiri in hand:
+                    return hand.index(nigiri)
+
         # Otherwise use priority list
         for card in priority:
             if card in hand:
                 return hand.index(card)
-        
-    def count_card(self, card_name:str ) -> int :
-        """Returns the total amount of times a card has been played"""
-        return self.state.played_cards.count(card_name)
+
+        # Fallback: random
+        return random.randint(0, len(hand) - 1)
 
     def handle_game_message(self, message: str) -> bool:
         """Handle an in-game message. Returns False on GAME_END."""

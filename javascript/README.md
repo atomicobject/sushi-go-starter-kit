@@ -74,6 +74,41 @@ Only send `PLAY` when you receive a `HAND` message. The server sends `HAND` exac
 
 The client tracks played cards, chopsticks, and wasabi state via `this.state`. Use it to make smarter decisions.
 
+## Rejoin After Disconnect
+
+The starter client saves the rejoin token from the `WELCOME` message. If your bot crashes, you can reconnect using that token instead of joining fresh:
+
+```javascript
+const net = require('net');
+
+const token = 'fG6miM0Ge9OnNyUTsARaSyX3ZUW8cqr8'; // saved from WELCOME
+const socket = new net.Socket();
+
+socket.connect(7878, 'localhost', () => {
+    socket.write(`REJOIN ${token}\n`);
+});
+// server responds: "REJOINED myGame 0"
+```
+
+For a production bot, save the token to a file on join and read it back on startup:
+
+```javascript
+const fs = require('fs');
+
+// On join — save token
+fs.writeFileSync('rejoin_token.txt', rejoinToken);
+
+// On restart — check for saved token
+try {
+    const token = fs.readFileSync('rejoin_token.txt', 'utf-8').trim();
+    send(`REJOIN ${token}`);
+} catch {
+    send(`JOIN ${gameId} ${playerName}`);
+}
+```
+
+See the [main README](../README.md#handling-disconnects-rejoin-tokens) for more details.
+
 ## Protocol
 
 See [../PROTOCOL.md](../PROTOCOL.md) for the full protocol specification.
