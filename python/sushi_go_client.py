@@ -196,6 +196,7 @@ class SushiGoClient:
         if self.state and self.state.round == 2:
             for pud in hand:
                 if pud == "Pudding":
+                    print("PUDDING GRABBED")
                     return hand.index(pud)
 
         # Otherwise use priority list
