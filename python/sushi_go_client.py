@@ -191,6 +191,13 @@ class SushiGoClient:
                 if nigiri in hand:
                     return hand.index(nigiri)
 
+        
+        # Pudding logic
+        if self.state and self.state.round == 2:
+            for pud in hand:
+                if pud == "Pudding":
+                    return hand.index(pud)
+
         # Otherwise use priority list
         for card in priority:
             if card in hand:
@@ -198,7 +205,8 @@ class SushiGoClient:
 
         # Fallback: random
         return random.randint(0, len(hand) - 1)
-
+        
+    
     def handle_message(self, message: str):
         """Handle a message from the server."""
         if message.startswith("HAND"):
