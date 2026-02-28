@@ -1,5 +1,4 @@
 from player import Player
-from card import Card
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -70,3 +69,22 @@ class GameState:
         self.turn = 1
         for player in self.players.values():
             player.reset_round()
+
+    def get_opponent_players(self) -> list[Player]:
+        """Get list of all opponent players (everyone except us)."""
+        return [p for p in self.players.values() if p.name != self.my_name]
+
+    def get_cards_in_circulation(self) -> int:
+        """Estimate how many cards are still being passed around."""
+        my_player = self.get_my_player()
+        if my_player:
+            return len(my_player.current_hand)
+        return 0
+
+    def is_early_game(self) -> bool:
+        """Check if we're in the early part of the round (many cards left)."""
+        return self.turn <= 3
+
+    def is_late_game(self) -> bool:
+        """Check if we're in the late part of the round (few cards left)."""
+        return self.turn >= 8
