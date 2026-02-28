@@ -43,12 +43,14 @@ class GameState:
     game_id: str
     player_id: int
     hand: list[str]
+    num_players: int = 0
     round: int = 1
     turn: int = 1
     played_cards: list[str] = None
     has_chopsticks: bool = False
     has_unused_wasabi: bool = False
     puddings: int = 0
+    cards_played = {}
 
     def __post_init__(self):
         if self.played_cards is None:
@@ -147,6 +149,7 @@ class SushiGoClient:
                 cards.append(match.group(2).strip())
             if self.state:
                 self.state.hand = cards
+                print(self.state.hand)
                 # Update chopsticks/wasabi tracking based on played cards
                 self.state.has_chopsticks = "Chopsticks" in self.state.played_cards
                 self.state.has_unused_wasabi = any(
@@ -223,6 +226,10 @@ class SushiGoClient:
         elif message.startswith("WAITING"):
             # Our move was accepted, waiting for others
             pass
+        elif message.startswith("GAME_START"):
+            parts = message.split()
+            if self.state and len(parts) >= 2:
+                self.state.num_players = int(parts[1])
         return True
 
     def play_turn(self):
