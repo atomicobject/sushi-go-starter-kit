@@ -58,7 +58,7 @@ class PlayerState:
 
     def __init__(self):
         self.individual_hand: list[Card] = []
-        self.play_area: list[list[Card]] = [] # each element could be stacked cards
+        self.play_area: list[CardStack] = [] 
         self.has_chopsticks: bool = False
         self.has_unused_wasabi: bool = False
         self.puddings: int = 0
@@ -68,11 +68,9 @@ class Card:
         self.name = name
         self.shorthand = shorthand
 
-
-
-
-
-
+class CardStack:
+    def __init__(self):
+        cardStack = []
 class SushiGoClient:
     """A client for playing Sushi Go."""
 
