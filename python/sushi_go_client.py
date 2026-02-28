@@ -173,11 +173,28 @@ class SushiGoClient:
         """
 
         print(f"DEBUG TURN: {self.state.turn}")
-
         if self.state.turn % 10 == 0:
             self.state.round += 1
-
         print(f"DEBUG ROUND: {self.state.round}")
+
+
+        # SET COMPLETION 
+
+        # Sashimi set of 3 
+        if self.count_card("Sahimi") == 2 and "Sashimi" in hand:
+            print("DEBUG: SASHIMI SET OF 3 MADE")
+            return hand.index("Sashimi")
+        
+        # Tempura pair 
+        if self.count_card("Tempura") == 1 and "Tempura" in hand:
+            print("DEBUG: Tempura SET OF 3 MADE")
+            return hand.index("Tempura")
+
+        # Dumpling sets
+        total_dumplings = self.count_card("Dumplings")
+        if self.count_card("Dumpling") >= 1 and "Dumpling" in hand:
+            print(f"DEBUG: Total dumplings = {total_dumplings}\nGRABBING DUMPLING")
+            return hand.index("Dumpling")
 
         # If we have wasabi, prioritize nigiri
         if self.state and self.state.has_unused_wasabi:
@@ -216,6 +233,11 @@ class SushiGoClient:
             if card in hand:
                 return hand.index(card)
         
+    def count_card(self, card_name:str ) -> int :
+        """Returns the total amount of times a card has been played"""
+        return self.state.played_cards(card_name)
+
+
     
     def handle_message(self, message: str):
         """Handle a message from the server."""
