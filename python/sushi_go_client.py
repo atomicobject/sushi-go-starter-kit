@@ -181,7 +181,7 @@ class SushiGoClient:
         # SET COMPLETION 
 
         # Sashimi set of 3 
-        if self.count_card("Sahimi") == 2 and "Sashimi" in hand:
+        if self.count_card("Sashimi") == 2 and "Sashimi" in hand:
             print("DEBUG: SASHIMI SET OF 3 MADE")
             return hand.index("Sashimi")
         
@@ -201,6 +201,7 @@ class SushiGoClient:
             for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
                 if nigiri in hand:
                     return hand.index(nigiri)
+
 
         # Pudding logic
         if self.state and (self.state.round != 1):
@@ -235,7 +236,7 @@ class SushiGoClient:
         
     def count_card(self, card_name:str ) -> int :
         """Returns the total amount of times a card has been played"""
-        return self.state.played_cards(card_name)
+        return self.state.played_cards.count(card_name)
 
 
     
