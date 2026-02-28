@@ -21,9 +21,9 @@ import json
 from player import Player
 from card import Card
 from game import GameState
+from card_evaluator import CardEvaluator
 from typing import Optional
 
-# Card names used by the protocol (now using full names instead of codes)
 CARD_NAMES = {
     "Tempura": "Tempura",
     "Sashimi": "Sashimi",
@@ -37,6 +37,22 @@ CARD_NAMES = {
     "Pudding": "Pudding",
     "Wasabi": "Wasabi",
     "Chopsticks": "Chopsticks",
+}
+
+# For handling responses from the server
+SHORTHAND_TO_NAME = {
+    "TMP": "Tempura",
+    "SSH": "Sashimi",
+    "DMP": "Dumpling",
+    "MK1": "Maki Roll (1)",
+    "MK2": "Maki Roll (2)",
+    "MK3": "Maki Roll (3)",
+    "EGG": "Egg Nigiri",
+    "SAL": "Salmon Nigiri",
+    "SQD": "Squid Nigiri",
+    "PDG": "Pudding",
+    "WSB": "Wasabi",
+    "CHP": "Chopsticks",
 }
 
 class SushiGoClient:
@@ -141,54 +157,81 @@ class SushiGoClient:
                     my_player.set_current_hand(cards)
                     print(f"My hand: {cards}")
 
-    def choose_card(self, hand: list[str]) -> int:
+    def choose_card(self, player: Player) -> int:
         """
-        Choose which card to play.
+        Choose which card to play using a hybrid greedy + smart strategy.
 
-        This is where you implement your AI strategy!
-        The default implementation uses a simple priority-based approach.
+        Strategy:
+        1. Complete high-value sets (Sashimi 3rd, Tempura 2nd)
+        2. Use wasabi with best available nigiri
+        3. Take wasabi if great nigiri in hand
+        4. Otherwise: greedy priority list
 
         Args:
-            hand: List of card names in your current hand
+            player: The Player object with current hand and played cards
 
         Returns:
             Index of the card to play (0-based)
         """
-        # Simple priority-based strategy
-        priority = [
-            "Squid Nigiri",  # 3 points, or 9 with wasabi
-            "Salmon Nigiri",  # 2 points, or 6 with wasabi
-            "Maki Roll (3)",  # 3 maki rolls
-            "Maki Roll (2)",  # 2 maki rolls
-            "Tempura",  # 5 points per pair
-            "Sashimi",  # 10 points per set of 3
-            "Dumpling",  # Increasing value
-            "Wasabi",  # Triples next nigiri
-            "Egg Nigiri",  # 1 point, or 3 with wasabi
-            "Pudding",  # End game scoring
-            "Maki Roll (1)",  # 1 maki roll
-            "Chopsticks",  # Play 2 cards next turn
-        ]
+        if not player.current_hand:
+            return 0
 
-        # If we have unused wasabi, prioritize nigiri
-        my_player = self.state.get_my_player() if self.state else None
-        if my_player and my_player.has_unused_wasabi():
+        hand = player.current_hand
+        played = player.played_cards
+
+        # PRIORITY 1: Complete Sashimi set (3rd card = 10 points!)
+        sashimi_count = played.count("Sashimi")
+        if sashimi_count == 2 and "Sashimi" in hand:
+            print("STRATEGY: Completing Sashimi set (10 points!)")
+            return hand.index("Sashimi")
+
+        # PRIORITY 2: Complete Tempura pair (2nd card = 5 points!)
+        tempura_count = played.count("Tempura")
+        if tempura_count % 2 == 1 and "Tempura" in hand:
+            print("STRATEGY: Completing Tempura pair (5 points!)")
+            return hand.index("Tempura")
+
+        # PRIORITY 3: Use wasabi with best nigiri available
+        if player.has_unused_wasabi():
             for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
                 if nigiri in hand:
+                    print(f"STRATEGY: Using wasabi with {nigiri}")
                     return hand.index(nigiri)
 
-        # Otherwise use priority list
+        # PRIORITY 4: Take wasabi if we have Squid or Salmon in hand
+        if "Wasabi" in hand:
+            if "Squid Nigiri" in hand or "Salmon Nigiri" in hand:
+                print("STRATEGY: Taking wasabi (good nigiri in hand)")
+                return hand.index("Wasabi")
+
+        # PRIORITY 5: Greedy priority list (like original_bot)
+        priority = [
+            "Squid Nigiri",      # 3 points (9 with wasabi)
+            "Salmon Nigiri",     # 2 points (6 with wasabi)
+            "Sashimi",           # Start sets aggressively
+            "Tempura",           # Start pairs aggressively
+            "Maki Roll (3)",     # 3 maki
+            "Maki Roll (2)",     # 2 maki
+            "Dumpling",          # Increasing value
+            "Wasabi",            # Speculative (might get nigiri)
+            "Egg Nigiri",        # 1 point (3 with wasabi)
+            "Pudding",           # End game scoring
+            "Maki Roll (1)",     # 1 maki
+            "Chopsticks",        # Flexibility
+        ]
+
         for card in priority:
             if card in hand:
+                print(f"STRATEGY: Greedy pick - {card}")
                 return hand.index(card)
 
-        # Fallback: random
-        return random.randint(0, len(hand) - 1)
+        # Fallback: first card
+        print("STRATEGY: Fallback - taking first card")
+        return 0
 
 
     def parse_played_message(self, message: str):
         """Parse a PLAYED message and update all players' cards."""
-        # Format: PLAYED Alice:Squid Nigiri; Bob:Tempura
         if not message.startswith("PLAYED"):
             return
 
@@ -200,13 +243,12 @@ class SushiGoClient:
                 continue
             player_name, card_name = entry.split(":", 1)
             player_name = player_name.strip()
-            card_name = card_name.strip()
+            card_code = card_name.strip()
+            card_name = SHORTHAND_TO_NAME.get(card_code, card_code)
 
-            # Add player if we haven't seen them yet
             if player_name not in self.state.players:
                 self.state.add_player(player_name)
 
-            # Record the card they played
             player = self.state.get_player(player_name)
             if player:
                 player.add_played_card(card_name)
@@ -217,7 +259,6 @@ class SushiGoClient:
         if message.startswith("HAND"):
             self.parse_hand(message)
         elif message.startswith("JOINED"):
-            # Format: JOINED <player_name> <count>/<max>
             parts = message.split()
             if len(parts) >= 2 and self.state:
                 player_name = parts[1]
@@ -258,11 +299,6 @@ class SushiGoClient:
                         print(f"Error parsing round scores: {e}")
         elif message.startswith("GAME_END"):
             print("Game over!")
-            if self.state:
-                # Print final statistics
-                print("\nFinal Player States:")
-                for player in self.state.players.values():
-                    print(f"  {player}")
             return False
         elif message.startswith("WAITING"):
             # Our move was accepted, waiting for others
@@ -278,7 +314,7 @@ class SushiGoClient:
         if not my_player or not my_player.current_hand:
             return
 
-        card_index = self.choose_card(my_player.current_hand)
+        card_index = self.choose_card(my_player)
         played_card = my_player.current_hand[card_index]
 
         response = self.play_card(card_index)
