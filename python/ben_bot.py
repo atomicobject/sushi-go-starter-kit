@@ -16,7 +16,11 @@ import random
 import re
 import socket
 import sys
-from dataclasses import dataclass
+import json
+
+from player import Player
+from card import Card
+from game import GameState
 from typing import Optional
 
 # Card names used by the protocol (now using full names instead of codes)
@@ -35,57 +39,6 @@ CARD_NAMES = {
     "Chopsticks": "Chopsticks",
 }
 
-class Card:
-    def __init__(self, name: str = "Unknown", shorthand: str = "UK"):
-        self.name = name
-        self.shorthand = shorthand
-
-@dataclass
-class GameState:
-    """Tracks the current state of the game."""
-
-    game_id: str
-    player_id: int
-    hand: list[str]
-    num_players: int = 0
-    round: int = 1
-    turn: int = 1
-    played_cards: list[str] = None
-    cards_played: dict[str, list[Card]] = {}
-    initial_card_set: list[Card] = [
-        Card("Tempura", "T") * 14,
-        Card("Sashimi", "S") * 14,
-        Card("Dumpling", "D") * 14,
-        Card("Maki Roll (1)", "M1") * 6,
-        Card("Maki Roll (2)", "M2") * 8,
-        Card("Maki Roll (3)", "M3") * 12,
-        Card("Egg Nigiri", "E") * 5,
-        Card("Salmon Nigiri", "S") * 10,
-        Card("Squid Nigiri", "Q") * 5,
-        Card("Pudding", "P") * 10,
-        Card("Wasabi", "W") * 6,
-        Card("Chopsticks", "C") * 4,
-    ]
-    cards_remaining : list[Card] = []
-
-    def __post_init__(self):
-        if self.played_cards is None:
-            self.played_cards = []
-
-
-class PlayerState:
-
-    def __init__(self):
-        self.individual_hand: list[Card] = []
-        self.play_area: list[CardStack] = []
-        self.has_chopsticks: bool = False
-        self.has_unused_wasabi: bool = False
-        self.puddings: int = 0
-
-
-class CardStack:
-    def __init__(self):
-        cardStack = []
 class SushiGoClient:
     """A client for playing Sushi Go."""
 
@@ -147,7 +100,13 @@ class SushiGoClient:
 
         if response.startswith("WELCOME"):
             parts = response.split()
-            self.state = GameState(game_id=parts[1], player_id=int(parts[2]), hand=[])
+            self.state = GameState(
+                game_id=parts[1],
+                player_id=int(parts[2]),
+                my_name=player_name
+            )
+            # Add ourselves as a player
+            self.state.add_player(player_name)
             return True
         elif response.startswith("ERROR"):
             print(f"Failed to join: {response}")
@@ -177,16 +136,10 @@ class SushiGoClient:
             for match in re.finditer(r"(\d+):(.*?)(?=\s\d+:|$)", payload):
                 cards.append(match.group(2).strip())
             if self.state:
-                self.state.hand = cards
-                print(self.state.hand)
-                # Update chopsticks/wasabi tracking based on played cards
-                self.state.has_chopsticks = "Chopsticks" in self.state.played_cards
-                self.state.has_unused_wasabi = any(
-                    c == "Wasabi" for c in self.state.played_cards
-                ) and not any(
-                    c in ("Egg Nigiri", "Salmon Nigiri", "Squid Nigiri")
-                    for c in self.state.played_cards
-                )
+                my_player = self.state.get_my_player()
+                if my_player:
+                    my_player.set_current_hand(cards)
+                    print(f"My hand: {cards}")
 
     def choose_card(self, hand: list[str]) -> int:
         """
@@ -196,7 +149,7 @@ class SushiGoClient:
         The default implementation uses a simple priority-based approach.
 
         Args:
-            hand: List of card codes in your current hand
+            hand: List of card names in your current hand
 
         Returns:
             Index of the card to play (0-based)
@@ -217,8 +170,9 @@ class SushiGoClient:
             "Chopsticks",  # Play 2 cards next turn
         ]
 
-        # If we have wasabi, prioritize nigiri
-        if self.state and self.state.has_unused_wasabi:
+        # If we have unused wasabi, prioritize nigiri
+        my_player = self.state.get_my_player() if self.state else None
+        if my_player and my_player.has_unused_wasabi():
             for nigiri in ["Squid Nigiri", "Salmon Nigiri", "Egg Nigiri"]:
                 if nigiri in hand:
                     return hand.index(nigiri)
@@ -231,51 +185,107 @@ class SushiGoClient:
         # Fallback: random
         return random.randint(0, len(hand) - 1)
 
+
+    def parse_played_message(self, message: str):
+        """Parse a PLAYED message and update all players' cards."""
+        # Format: PLAYED Alice:Squid Nigiri; Bob:Tempura
+        if not message.startswith("PLAYED"):
+            return
+
+        payload = message[len("PLAYED "):]
+        player_cards = payload.split("; ")
+
+        for entry in player_cards:
+            if ":" not in entry:
+                continue
+            player_name, card_name = entry.split(":", 1)
+            player_name = player_name.strip()
+            card_name = card_name.strip()
+
+            # Add player if we haven't seen them yet
+            if player_name not in self.state.players:
+                self.state.add_player(player_name)
+
+            # Record the card they played
+            player = self.state.get_player(player_name)
+            if player:
+                player.add_played_card(card_name)
+                print(f"{player_name} played {card_name}")
+
     def handle_message(self, message: str):
         """Handle a message from the server."""
         if message.startswith("HAND"):
             self.parse_hand(message)
-        elif message.startswith("ROUND_START"):
+        elif message.startswith("JOINED"):
+            # Format: JOINED <player_name> <count>/<max>
             parts = message.split()
-            if self.state:
-                self.state.round = int(parts[1])
-                self.state.turn = 1
-                self.state.played_cards = []
-        elif message.startswith("PLAYED"):
-            # Cards were revealed, next turn
-            if self.state:
-                self.state.turn += 1
-        elif message.startswith("ROUND_END"):
-            # Round ended
-            if self.state:
-                self.state.played_cards = []
-        elif message.startswith("GAME_END"):
-            print("Game over!")
-            return False
-        elif message.startswith("WAITING"):
-            # Our move was accepted, waiting for others
-            pass
+            if len(parts) >= 2 and self.state:
+                player_name = parts[1]
+                self.state.add_player(player_name)
+                print(f"Player joined: {player_name}")
         elif message.startswith("GAME_START"):
             parts = message.split()
             if self.state and len(parts) >= 2:
                 self.state.num_players = int(parts[1])
+                print(f"Game starting with {self.state.num_players} players")
+        elif message.startswith("ROUND_START"):
+            parts = message.split()
+            if self.state:
+                self.state.round = int(parts[1])
+                self.state.reset_round()
+                print(f"Round {self.state.round} starting")
+        elif message.startswith("PLAYED"):
+            # Parse all played cards and increment turn
+            if self.state:
+                self.parse_played_message(message)
+                self.state.turn += 1
+        elif message.startswith("ROUND_END"):
+            # Format: ROUND_END <round> <scores_json>
+            # Example: ROUND_END 1 {"Alice":12,"Bob":8}
+            if self.state:
+                parts = message.split(None, 2)
+                if len(parts) >= 3:
+                    try:
+                        import json
+                        scores = json.loads(parts[2])
+                        round_num = int(parts[1])
+                        for player_name, score in scores.items():
+                            player = self.state.get_player(player_name)
+                            if player:
+                                player.points_by_round[round_num] = score
+                        print(f"Round {round_num} ended. Scores: {scores}")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        print(f"Error parsing round scores: {e}")
+        elif message.startswith("GAME_END"):
+            print("Game over!")
+            if self.state:
+                # Print final statistics
+                print("\nFinal Player States:")
+                for player in self.state.players.values():
+                    print(f"  {player}")
+            return False
+        elif message.startswith("WAITING"):
+            # Our move was accepted, waiting for others
+            pass
         return True
 
     def play_turn(self):
         """Play a single turn."""
-        if not self.state or not self.state.hand:
+        if not self.state:
             return
 
-        card_index = self.choose_card(self.state.hand)
+        my_player = self.state.get_my_player()
+        if not my_player or not my_player.current_hand:
+            return
 
-        # Track the card we're about to play
-        played_card = self.state.hand[card_index]
+        card_index = self.choose_card(my_player.current_hand)
+        played_card = my_player.current_hand[card_index]
 
         response = self.play_card(card_index)
 
         if response.startswith("OK"):
-            if self.state:
-                self.state.played_cards.append(played_card)
+            print(f"Playing: {played_card}")
+            # Note: We'll update our played_cards when we receive the PLAYED message
 
     def run(self, game_id: str, player_name: str):
         """Main game loop."""
@@ -296,8 +306,10 @@ class SushiGoClient:
                 running = self.handle_message(message)
 
                 # If we received our hand, play a card
-                if message.startswith("HAND") and self.state and self.state.hand:
-                    self.play_turn()
+                if message.startswith("HAND") and self.state:
+                    my_player = self.state.get_my_player()
+                    if my_player and my_player.current_hand:
+                        self.play_turn()
 
         except KeyboardInterrupt:
             print("\nDisconnecting...")
