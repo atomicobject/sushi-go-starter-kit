@@ -3,4 +3,4 @@ class Card:
 
     def __init__(self, name: str, shorthand: str = ""):
         self.name = name
-        self.shorthand = shorthand if shorthand else name[0]
+        self.shorthand = shorthand

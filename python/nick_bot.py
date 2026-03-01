@@ -42,7 +42,6 @@ class GameState:
 
     game_id: str
     player_id: int
-    rejoin_token: str
     hand: list[str]
     round: int = 1
     turn: int = 1
@@ -117,14 +116,7 @@ class SushiGoClient:
 
         if response.startswith("WELCOME"):
             parts = response.split()
-            rejoin_token = parts[3] if len(parts) > 3 else ""
-            self.state = GameState(
-                game_id=parts[1],
-                player_id=int(parts[2]),
-                rejoin_token=rejoin_token,
-                hand=[],
-            )
-            print(f"Rejoin token: {rejoin_token}")
+            self.state = GameState(game_id=parts[1], player_id=int(parts[2]), hand=[])
             return True
         elif response.startswith("ERROR"):
             print(f"Failed to join: {response}")
@@ -179,17 +171,17 @@ class SushiGoClient:
         """
         # Simple priority-based strategy
         priority = [
-            "Squid Nigiri",  # 3 points, or 9 with wasabi
-            "Salmon Nigiri",  # 2 points, or 6 with wasabi
-            "Maki Roll (3)",  # 3 maki rolls
-            "Maki Roll (2)",  # 2 maki rolls
+            "Dumpling",  # Increasing value
             "Tempura",  # 5 points per pair
             "Sashimi",  # 10 points per set of 3
-            "Dumpling",  # Increasing value
             "Wasabi",  # Triples next nigiri
-            "Egg Nigiri",  # 1 point, or 3 with wasabi
-            "Pudding",  # End game scoring
+            "Maki Roll (3)",  # 3 maki rolls
+            "Maki Roll (2)",  # 2 maki rolls
             "Maki Roll (1)",  # 1 maki roll
+            "Pudding",  # End game scoring
+            "Egg Nigiri",  # 1 point, or 3 with wasabi
+            "Squid Nigiri",  # 3 points, or 9 with wasabi
+            "Salmon Nigiri",  # 2 points, or 6 with wasabi
             "Chopsticks",  # Play 2 cards next turn
         ]
 
@@ -199,10 +191,18 @@ class SushiGoClient:
                 if nigiri in hand:
                     return hand.index(nigiri)
 
+        # Play cards that we have already played, except for some
+        for card in hand:
+            if card in self.state.played_cards:
+                if card in ["Pudding", "Chopsticks", "Wasabi"]:
+                    break
+                return hand.index(card)
+
         # Otherwise use priority list
         for card in priority:
             if card in hand:
                 return hand.index(card)
+
 
         # Fallback: random
         return random.randint(0, len(hand) - 1)
